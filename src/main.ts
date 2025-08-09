@@ -1,3 +1,4 @@
+﻿import './styles/app.css';
 import './types';
 import { createStore } from './ui/store';
 import { renderApp } from './ui/render';
@@ -64,4 +65,5 @@ export function startGame() {
     console.error('Error starting game:', error);
   }
 }
+
 
