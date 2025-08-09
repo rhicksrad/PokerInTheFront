@@ -4,20 +4,64 @@
 class SoundEngine {
   private audioContext: AudioContext | null = null;
   private enabled = true;
+  private isUnlocked = false;
 
   constructor() {
     // Initialize audio context on first user interaction
     this.initAudio();
   }
 
-  private initAudio() {
+  private async initAudio() {
     if (typeof window !== 'undefined' && 'AudioContext' in window) {
-      // Don't create context immediately - wait for user interaction
-      document.addEventListener('click', () => {
+      // Setup one-time unlock listener for iOS
+      const unlockAudio = async () => {
         if (!this.audioContext) {
-          this.audioContext = new AudioContext();
+          try {
+            this.audioContext = new AudioContext();
+            
+            // Enable iOS audio using mobile utility
+            const { enableIOSAudio } = await import('../utils/mobile');
+            await enableIOSAudio(this.audioContext);
+            
+            this.isUnlocked = true;
+            console.log('Audio unlocked successfully');
+          } catch (error) {
+            console.warn('Failed to unlock audio:', error);
+          }
+        } else if (this.audioContext.state === 'suspended') {
+          try {
+            await this.audioContext.resume();
+            this.isUnlocked = true;
+            console.log('Audio context resumed');
+          } catch (error) {
+            console.warn('Failed to resume audio context:', error);
+          }
         }
-      }, { once: true });
+      };
+
+      // Listen for first user interaction (pointer or click)
+      const handleFirstInteraction = async () => {
+        await unlockAudio();
+        document.removeEventListener('pointerup', handleFirstInteraction);
+        document.removeEventListener('click', handleFirstInteraction);
+        document.removeEventListener('touchend', handleFirstInteraction);
+      };
+
+      document.addEventListener('pointerup', handleFirstInteraction, { once: true, passive: true });
+      document.addEventListener('click', handleFirstInteraction, { once: true, passive: true });
+      document.addEventListener('touchend', handleFirstInteraction, { once: true, passive: true });
+      
+      // Also handle visibility changes for iOS background/foreground
+      document.addEventListener('visibilitychange', async () => {
+        if (!document.hidden && this.audioContext && this.audioContext.state === 'suspended') {
+          try {
+            await this.audioContext.resume();
+            console.log('Audio resumed after visibility change');
+          } catch (error) {
+            console.warn('Failed to resume audio after visibility change:', error);
+          }
+        }
+      });
     }
   }
 
@@ -37,11 +81,21 @@ class SoundEngine {
     this.enabled = enabled;
   }
 
-  private playTone(frequency: number, duration: number, volume = 0.1, type: OscillatorType = 'sine') {
+  private async playTone(frequency: number, duration: number, volume = 0.1, type: OscillatorType = 'sine') {
     if (!this.enabled) return;
     
     const ctx = this.getAudioContext();
     if (!ctx) return;
+
+    // Resume context if suspended (iOS handling)
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        console.warn('Failed to resume audio context for playback:', error);
+        return;
+      }
+    }
 
     try {
       const oscillator = ctx.createOscillator();
@@ -62,25 +116,32 @@ class SoundEngine {
       oscillator.stop(ctx.currentTime + duration);
     } catch (e) {
       // Silently fail if audio doesn't work
+      console.warn('Audio playback failed:', e);
     }
   }
 
   // Card dealing sound - soft whoosh
   playCardDeal() {
     this.playTone(150, 0.15, 0.05, 'triangle');
-    setTimeout(() => this.playTone(120, 0.1, 0.03, 'triangle'), 50);
+    requestAnimationFrame(() => {
+      setTimeout(() => this.playTone(120, 0.1, 0.03, 'triangle'), 50);
+    });
   }
 
   // Card flip sound - quick click
   playCardFlip() {
     this.playTone(800, 0.05, 0.08, 'square');
-    setTimeout(() => this.playTone(600, 0.05, 0.05, 'square'), 20);
+    requestAnimationFrame(() => {
+      setTimeout(() => this.playTone(600, 0.05, 0.05, 'square'), 20);
+    });
   }
 
   // Chip/money sound - gentle clink
   playChips() {
     this.playTone(440, 0.1, 0.06, 'triangle');
-    setTimeout(() => this.playTone(660, 0.08, 0.04, 'triangle'), 30);
+    requestAnimationFrame(() => {
+      setTimeout(() => this.playTone(660, 0.08, 0.04, 'triangle'), 30);
+    });
   }
 
   // Button click - soft pop
