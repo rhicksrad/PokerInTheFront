@@ -20,7 +20,16 @@
   --min-touch-target: 44px;
 }
 
-* { box-sizing: border-box; }
+* { 
+  box-sizing: border-box;
+}
+
+/* Prevent iOS Safari page bounce/rubber band effect */
+html, body {
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+}
 /* Support for new viewport units with fallbacks */
 @supports (height: 100svh) {
   html, body, #app { 
@@ -81,6 +90,7 @@ body {
   overflow-x: hidden;
   max-width: 100vw;
   /* Height is set above in @supports blocks */
+  overscroll-behavior: none;
 }
 
 .topbar {
@@ -3534,6 +3544,7 @@ input:focus:not(:focus-visible),
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: none;
   }
   
   /* Individual seats - horizontal cards layout */
@@ -3621,6 +3632,7 @@ input:focus:not(:focus-visible),
     background: rgba(42, 27, 18, 0.4);
     border-radius: 8px;
     flex-shrink: 0;
+    overscroll-behavior: none;
   }
   
   /* Human player gets special treatment */
