@@ -3551,6 +3551,21 @@ input:focus:not(:focus-visible),
     flex-shrink: 0;
   }
   
+  /* Adapt existing HTML structures for mobile */
+  .seat .cards-and-actions {
+    display: flex !important;
+    flex-direction: row;
+    gap: 1rem;
+    align-items: center;
+    flex: 1;
+    justify-content: flex-end;
+  }
+  
+  .seat .name {
+    font-size: 0.9rem !important;
+    font-weight: bold;
+  }
+  
   /* Player info on left */
   .player-info {
     display: flex !important;
@@ -3827,33 +3842,82 @@ input:focus:not(:focus-visible),
 
 /* Landscape phone optimizations */
 @media (max-width: 768px) and (orientation: landscape) {
-  /* Prefer side-by-side layout in landscape */
+  /*
+  LANDSCAPE LAYOUT:
+  ┌─────────────┬─────────┐
+  │ 🃏🃏🃏🃏🃏   │ 📋 Log  │ ← Side-by-side
+  │ 💰 Pot      │ 📊 Stats│
+  │ 👤 You [🃏🃏]│         │
+  │ 🤖 AI  [🂠🂠]│         │
+  └─────────────┴─────────┘
+  */
+  
+  /* Side-by-side layout for landscape */
   .content {
     flex-direction: row !important;
+    gap: 0.5rem;
   }
   
   .table-area {
-    flex: 2;
+    flex: 2.5;
+    min-width: 0;
   }
   
   .right-panel-container {
     flex: 1;
-    max-width: 250px;
+    max-width: 200px;
+    min-width: 150px;
+    max-height: none;
+    order: 2;
   }
   
-  /* More compact vertical spacing */
+  /* More compact seats in landscape */
+  .seat {
+    min-height: 60px;
+    padding: 0.5rem 0.75rem;
+  }
+  
+  /* Landscape cards can be smaller */
+  .card {
+    width: 30px !important;
+    height: 45px !important;
+    font-size: 0.6rem !important;
+  }
+  
+  /* Human player cards normal size */
+  .seat[id="s0"] .card {
+    width: 34px !important;
+    height: 51px !important;
+  }
+  
+  /* Board area more compact in landscape */
+  .board {
+    padding: 0.6rem 0.4rem;
+    min-height: 60px;
+  }
+  
+  /* Pot display smaller */
+  .pot-display {
+    padding: 0.5rem;
+    font-size: 1rem;
+  }
+  
+  /* More compact topbar */
   .topbar-inner {
-    padding: 0.2rem 0.5rem;
+    padding: 0.2rem 0.4rem;
   }
   
-  /* Action bar can be smaller in landscape */
-  .player-actions {
-    position: relative !important;
-    background: transparent;
-    backdrop-filter: none;
-    border: none;
-    box-shadow: none;
-    padding: 0.3rem;
+  /* Action buttons more compact */
+  .action-btn {
+    min-height: 38px !important;
+    font-size: 0.75rem !important;
+    padding: 0.3rem 0.5rem !important;
+  }
+  
+  /* Smaller avatars */
+  .avatar {
+    width: 36px !important;
+    height: 36px !important;
   }
 }
 
