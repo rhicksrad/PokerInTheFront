@@ -251,3 +251,86 @@ export const createVisibilityObserver = (
   
   return () => observer.disconnect();
 };
+
+/**
+ * Handle visual viewport changes for iOS Safari
+ * Prevents layout jump when address bar collapses/expands
+ */
+export const handleVisualViewport = (): (() => void) => {
+  if (!('visualViewport' in window)) {
+    return () => {}; // No-op cleanup for unsupported browsers
+  }
+  
+  const viewport = window.visualViewport!;
+  let pendingUpdate = false;
+  
+  const updateViewport = () => {
+    if (pendingUpdate) return;
+    pendingUpdate = true;
+    
+    requestAnimationFrame(() => {
+      // Update CSS custom properties with viewport dimensions
+      const root = document.documentElement;
+      root.style.setProperty('--visual-viewport-width', `${viewport.width}px`);
+      root.style.setProperty('--visual-viewport-height', `${viewport.height}px`);
+      root.style.setProperty('--visual-viewport-offset-top', `${viewport.offsetTop}px`);
+      root.style.setProperty('--visual-viewport-offset-left', `${viewport.offsetLeft}px`);
+      
+      pendingUpdate = false;
+    });
+  };
+  
+  // Initial setup
+  updateViewport();
+  
+  // Listen for viewport changes
+  viewport.addEventListener('resize', updateViewport);
+  viewport.addEventListener('scroll', updateViewport);
+  
+  return () => {
+    viewport.removeEventListener('resize', updateViewport);
+    viewport.removeEventListener('scroll', updateViewport);
+  };
+};
+
+/**
+ * Enhanced orientation handling with better iOS support
+ */
+export const handleEnhancedOrientation = (): (() => void) => {
+  const updateOrientation = createDebouncedResize(() => {
+    const orientationInfo = getOrientationInfo();
+    const root = document.documentElement;
+    
+    // Update CSS custom properties
+    root.style.setProperty('--is-portrait', orientationInfo.isPortrait ? '1' : '0');
+    root.style.setProperty('--is-landscape', orientationInfo.isPortrait ? '0' : '1');
+    root.setAttribute('data-orientation', orientationInfo.isPortrait ? 'portrait' : 'landscape');
+    
+    // Show rotation hint if needed
+    const rotateHint = document.querySelector('.rotate-hint');
+    if (rotateHint && orientationInfo.shouldShowRotateHint) {
+      rotateHint.classList.add('show');
+      setTimeout(() => rotateHint.classList.remove('show'), 4000);
+    }
+    
+    // Announce orientation change to screen readers
+    const liveRegion = document.getElementById('game-status-live');
+    if (liveRegion) {
+      liveRegion.textContent = orientationInfo.isPortrait 
+        ? 'Switched to portrait orientation' 
+        : 'Switched to landscape orientation';
+    }
+  }, 150);
+  
+  // Listen for orientation changes
+  window.addEventListener('orientationchange', updateOrientation);
+  window.addEventListener('resize', updateOrientation);
+  
+  // Initial setup
+  updateOrientation();
+  
+  return () => {
+    window.removeEventListener('orientationchange', updateOrientation);
+    window.removeEventListener('resize', updateOrientation);
+  };
+};
