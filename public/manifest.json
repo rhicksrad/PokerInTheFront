@@ -1,0 +1,62 @@
+{
+  "name": "Poker In The Front - Wild West Texas Hold'em",
+  "short_name": "Poker West",
+  "description": "The most authentic Old West poker experience this side of the Mississippi. Play Texas Hold'em against cunning AI gunslingers in an 1860s saloon setting.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2a1b12",
+  "theme_color": "#e2b14a",
+  "orientation": "landscape-primary",
+  "categories": ["games", "entertainment"],
+  "lang": "en-US",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32 48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png", 
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Poker table with AI opponents in landscape mode"
+    },
+    {
+      "src": "/screenshot-narrow.png", 
+      "sizes": "640x1136",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mobile poker interface in portrait mode"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Play",
+      "short_name": "Play",
+      "description": "Jump straight into a poker game",
+      "url": "/?quick=true",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "32x32"
+        }
+      ]
+    }
+  ]
+}

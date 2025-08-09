@@ -165,27 +165,30 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
     scaleObserver.observe(container);
   });
   
-  // Handle orientation changes on mobile
-  import('../utils/mobile').then(({ createDebouncedResize, getOrientationInfo }) => {
-    const handleOrientationChange = createDebouncedResize(() => {
-      const orientationInfo = getOrientationInfo();
-      document.documentElement.setAttribute('data-orientation', 
-        orientationInfo.isPortrait ? 'portrait' : 'landscape');
-      
-      // Show rotate hint if needed (very narrow portrait)
-      const rotateHint = document.querySelector('.rotate-hint');
-      if (rotateHint && orientationInfo.shouldShowRotateHint) {
-        rotateHint.classList.add('show');
-        setTimeout(() => rotateHint.classList.remove('show'), 3000);
-      }
-    }, 200);
+  // Handle orientation changes and visual viewport on mobile
+  import('../utils/mobile').then(({ handleEnhancedOrientation, handleVisualViewport, isIOS }) => {
+    // Enhanced orientation handling
+    const cleanupOrientation = handleEnhancedOrientation();
     
-    window.addEventListener('orientationchange', handleOrientationChange);
-    window.addEventListener('resize', handleOrientationChange);
+    // Visual viewport handling for iOS Safari
+    let cleanupViewport: (() => void) | undefined;
+    if (isIOS()) {
+      cleanupViewport = handleVisualViewport();
+    }
     
-    // Initial orientation setup
-    handleOrientationChange();
+    // Store cleanup functions for potential later use
+    (window as any).__mobileCleanup = () => {
+      cleanupOrientation();
+      if (cleanupViewport) cleanupViewport();
+    };
   });
+
+  // Add skip link for keyboard navigation
+  const skipLink = document.createElement('a');
+  skipLink.href = '#main-content';
+  skipLink.className = 'skip-link';
+  skipLink.textContent = 'Skip to main game area';
+  page.appendChild(skipLink);
 
   // Top bar: status + controls
   const topbar = document.createElement('div');
@@ -213,6 +216,9 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
   autoFoldIndicator.style.display = 'block'; // Always visible
   autoFoldIndicator.innerHTML = '🤖 Auto-fold: <span id="auto-fold-threshold-display">25</span>%';
   autoFoldIndicator.title = 'Click to toggle auto-fold feature';
+  autoFoldIndicator.setAttribute('role', 'button');
+  autoFoldIndicator.setAttribute('aria-label', 'Toggle auto-fold weak hands feature');
+  autoFoldIndicator.setAttribute('tabindex', '0');
   
   // Add mobile-optimized pointer handler to toggle auto-fold
   import('../utils/mobile').then(({ addPointerListener }) => {
@@ -268,6 +274,7 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
 
   const content = document.createElement('div');
   content.className = 'content';
+  content.id = 'main-content';
   // Middle: main table area
   const middleCol = document.createElement('div');
   middleCol.appendChild(table);
@@ -294,6 +301,18 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
     <div>please rotate to landscape</div>
   `;
   page.appendChild(rotateHint);
+  
+  // Add ARIA live region for game status announcements
+  const liveRegion = document.createElement('div');
+  liveRegion.id = 'game-status-live';
+  liveRegion.setAttribute('aria-live', 'polite');
+  liveRegion.setAttribute('aria-atomic', 'true');
+  liveRegion.style.position = 'absolute';
+  liveRegion.style.left = '-10000px';
+  liveRegion.style.width = '1px';
+  liveRegion.style.height = '1px';
+  liveRegion.style.overflow = 'hidden';
+  page.appendChild(liveRegion);
   
   container.appendChild(page);
 
@@ -611,34 +630,41 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
                   ${facingAmount > 0 ? `<span class="facing-amount">Need $${facingAmount} to call</span>` : ''}
                 </div>
                 <div class="action-grid">
-                  <button id="action-fold" class="action-btn compact danger" ${!legal.has('Fold') && !legal.has('Check') ? 'disabled' : ''}>
+                  <button id="action-fold" class="action-btn compact danger" ${!legal.has('Fold') && !legal.has('Check') ? 'disabled' : ''} 
+                          aria-label="Fold your hand and exit this round">
                     Fold
                   </button>
                   ${legal.has('Check') ? `
-                    <button id="action-check" class="action-btn compact" ${!legal.has('Check') ? 'disabled' : ''}>
+                    <button id="action-check" class="action-btn compact" ${!legal.has('Check') ? 'disabled' : ''} 
+                            aria-label="Check - stay in the round without betting">
                       Check
                     </button>
                   ` : ''}
                   ${legal.has('Call') ? `
-                    <button id="action-call" class="action-btn compact" ${!legal.has('Call') ? 'disabled' : ''}>
+                    <button id="action-call" class="action-btn compact" ${!legal.has('Call') ? 'disabled' : ''} 
+                            aria-label="Call - match the current bet to stay in">
                       Call
                     </button>
                   ` : ''}
                   <div class="bet-section">
-                    <input id="action-amount" type="number" min="1" step="1" value="10" ${!legal.has('Bet') && !legal.has('Raise') ? 'disabled' : ''} />
+                    <input id="action-amount" type="number" min="1" step="1" value="10" ${!legal.has('Bet') && !legal.has('Raise') ? 'disabled' : ''} 
+                           aria-label="Bet amount in chips" />
                     ${legal.has('Bet') ? `
-                      <button id="action-bet" class="action-btn compact primary" ${!legal.has('Bet') ? 'disabled' : ''}>
+                      <button id="action-bet" class="action-btn compact primary" ${!legal.has('Bet') ? 'disabled' : ''} 
+                              aria-label="Bet the specified amount">
                         Bet
                       </button>
                     ` : ''}
                     ${legal.has('Raise') ? `
-                      <button id="action-raise" class="action-btn compact primary" ${!legal.has('Raise') ? 'disabled' : ''}>
+                      <button id="action-raise" class="action-btn compact primary" ${!legal.has('Raise') ? 'disabled' : ''} 
+                              aria-label="Raise - increase the current bet">
                         Raise
                       </button>
                     ` : ''}
                   </div>
                   ${canAllIn ? `
-                    <button id="action-allin" class="action-btn compact all-in">
+                    <button id="action-allin" class="action-btn compact all-in" 
+                            aria-label="All In - bet all your remaining chips">
                       All In
                     </button>
                   ` : ''}
@@ -862,6 +888,29 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
     // Show game over modal if game is over
     if (s.phase === 'GameOver') {
       showGameOverModal(s);
+      
+      // Announce game over to screen readers
+      const liveRegion = document.getElementById('game-status-live');
+      if (liveRegion) {
+        liveRegion.textContent = 'Game over. Tournament has ended.';
+      }
+    }
+    
+    // Announce phase changes to screen readers
+    const liveRegion = document.getElementById('game-status-live');
+    if (liveRegion && s.phase) {
+      const phaseAnnouncements: Record<string, string> = {
+        'PreFlop': 'Pre-flop betting round',
+        'Flop': 'Flop cards revealed',
+        'Turn': 'Turn card revealed', 
+        'River': 'River card revealed',
+        'Showdown': 'Showdown - revealing hands'
+      };
+      
+      const announcement = phaseAnnouncements[s.phase];
+      if (announcement) {
+        liveRegion.textContent = announcement;
+      }
     }
 
     // Update player chips in top bar
