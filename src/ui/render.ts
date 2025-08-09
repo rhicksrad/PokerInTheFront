@@ -72,34 +72,36 @@ function checkAutoFold(state: GameState, store: StoreLike) {
   if (winChance < autoFoldThreshold) {
 
     
-    // Use setTimeout to ensure the UI has rendered and action buttons are available
-    setTimeout(() => {
-      // Check if folding is a legal action
-      const legal = computeLegalActions(state, 0);
-      if (legal.has('Fold')) {
-        console.log(`🤖 Executing auto-fold`);
-        lastAutoFoldHandNumber = state.handNumber; // Mark this hand as auto-folded
-        store.dispatchAction?.('Fold');
-        
-        // Add notification to log
-        const currentState = store.getState?.();
-        if (currentState && store.setState) {
-          const updatedState = {
-            ...currentState,
-            devLog: [
-              `🤖 Auto-folded weak hand (${winChance.toFixed(1)}% win chance)`,
-              `Auto-folded weak hand`,
-              ...currentState.devLog
-            ].slice(0, 50)
-          };
-          store.setState(updatedState);
+    // Use requestAnimationFrame to ensure the UI has rendered and action buttons are available
+    import('../utils/mobile').then(({ scheduleAnimation }) => {
+      scheduleAnimation(() => {
+        // Check if folding is a legal action
+        const legal = computeLegalActions(state, 0);
+        if (legal.has('Fold')) {
+          console.log(`🤖 Executing auto-fold`);
+          lastAutoFoldHandNumber = state.handNumber; // Mark this hand as auto-folded
+          store.dispatchAction?.('Fold');
+          
+          // Add notification to log
+          const currentState = store.getState?.();
+          if (currentState && store.setState) {
+            const updatedState = {
+              ...currentState,
+              devLog: [
+                `🤖 Auto-folded weak hand (${winChance.toFixed(1)}% win chance)`,
+                `Auto-folded weak hand`,
+                ...currentState.devLog
+              ].slice(0, 50)
+            };
+            store.setState(updatedState);
+          }
+        } else if (legal.has('Check')) {
+          // If we can't fold but can check (no bet to call), do that instead
+          console.log(`🤖 Can't fold, checking instead`);
+          store.dispatchAction?.('Check');
         }
-      } else if (legal.has('Check')) {
-        // If we can't fold but can check (no bet to call), do that instead
-        console.log(`🤖 Can't fold, checking instead`);
-        store.dispatchAction?.('Check');
-      }
-    }, 500); // Small delay to ensure UI is ready
+      }, 250); // Reduced delay, using RAF for better performance
+    });
   }
 }
 
@@ -108,30 +110,82 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
   const page = document.createElement('div');
   page.className = 'page';
   
-  // Setup ResizeObserver for dynamic UI scaling to prevent overlap
-  let resizeTimeout: number;
-  const scaleObserver = new ResizeObserver((entries) => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = window.setTimeout(() => {
-      const entry = entries[0];
-      if (!entry) return;
-      
-      const { width, height } = entry.contentRect;
-      const minDimension = Math.min(width, height);
-      
-      // Scale down if viewport is too small, scale up if there's room
-      let scale = 1;
-      if (minDimension < 600) {
-        scale = Math.max(0.6, minDimension / 600);
-      } else if (minDimension > 1200) {
-        scale = Math.min(1.2, minDimension / 1000);
-      }
-      
-      document.documentElement.style.setProperty('--ui-scale', scale.toString());
-    }, 100);
+  // Apply safe area support and gesture prevention for iOS
+  import('../utils/mobile').then(({ applySafeArea, isIOS, preventAccidentalGestures }) => {
+    if (isIOS()) {
+      applySafeArea(page);
+    }
+    // Prevent accidental gestures on the entire game area
+    preventAccidentalGestures(page);
   });
   
-  scaleObserver.observe(container);
+  // Setup performance-optimized ResizeObserver for dynamic UI scaling
+  import('../utils/mobile').then(({ createDebouncedResize, batchDOMOperations }) => {
+    const scaleObserver = new ResizeObserver((entries) => {
+      const updateScale = createDebouncedResize(() => {
+        const entry = entries[0];
+        if (!entry) return;
+        
+        // Batch DOM operations for better performance
+        batchDOMOperations({
+          reads: [() => {
+            const { width, height } = entry.contentRect;
+            const minDimension = Math.min(width, height);
+            const isMobile = width <= 768;
+            
+            // Mobile-aware scaling
+            let scale = 1;
+            if (isMobile) {
+              // Less aggressive scaling on mobile to maintain readability
+              scale = Math.max(0.8, Math.min(1, width / 400));
+            } else {
+              // Desktop scaling logic
+              if (minDimension < 600) {
+                scale = Math.max(0.6, minDimension / 600);
+              } else if (minDimension > 1200) {
+                scale = Math.min(1.2, minDimension / 1000);
+              }
+            }
+            
+            // Store scale for write operation
+            (window as any).__uiScale = scale;
+          }],
+          writes: [() => {
+            const scale = (window as any).__uiScale;
+            if (scale !== undefined) {
+              document.documentElement.style.setProperty('--ui-scale', scale.toString());
+            }
+          }]
+        });
+      }, 50); // Reduced debounce for more responsive scaling
+      
+      updateScale();
+    });
+    
+    scaleObserver.observe(container);
+  });
+  
+  // Handle orientation changes on mobile
+  import('../utils/mobile').then(({ createDebouncedResize, getOrientationInfo }) => {
+    const handleOrientationChange = createDebouncedResize(() => {
+      const orientationInfo = getOrientationInfo();
+      document.documentElement.setAttribute('data-orientation', 
+        orientationInfo.isPortrait ? 'portrait' : 'landscape');
+      
+      // Show rotate hint if needed (very narrow portrait)
+      const rotateHint = document.querySelector('.rotate-hint');
+      if (rotateHint && orientationInfo.shouldShowRotateHint) {
+        rotateHint.classList.add('show');
+        setTimeout(() => rotateHint.classList.remove('show'), 3000);
+      }
+    }, 200);
+    
+    window.addEventListener('orientationchange', handleOrientationChange);
+    window.addEventListener('resize', handleOrientationChange);
+    
+    // Initial orientation setup
+    handleOrientationChange();
+  });
 
   // Top bar: status + controls
   const topbar = document.createElement('div');
@@ -160,16 +214,18 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
   autoFoldIndicator.innerHTML = '🤖 Auto-fold: <span id="auto-fold-threshold-display">25</span>%';
   autoFoldIndicator.title = 'Click to toggle auto-fold feature';
   
-  // Add click handler to toggle auto-fold
-  autoFoldIndicator.addEventListener('click', () => {
-    const currentEnabled = localStorage.getItem('poker-auto-fold-enabled') === 'true';
-    const newEnabled = !currentEnabled;
-    localStorage.setItem('poker-auto-fold-enabled', newEnabled.toString());
-    
-    // Update the indicator immediately
-    updateAutoFoldIndicator();
-    
-    console.log(`🤖 Auto-fold ${newEnabled ? 'enabled' : 'disabled'}`);
+  // Add mobile-optimized pointer handler to toggle auto-fold
+  import('../utils/mobile').then(({ addPointerListener }) => {
+    addPointerListener(autoFoldIndicator, () => {
+      const currentEnabled = localStorage.getItem('poker-auto-fold-enabled') === 'true';
+      const newEnabled = !currentEnabled;
+      localStorage.setItem('poker-auto-fold-enabled', newEnabled.toString());
+      
+      // Update the indicator immediately
+      updateAutoFoldIndicator();
+      
+      console.log(`🤖 Auto-fold ${newEnabled ? 'enabled' : 'disabled'}`);
+    }, { debounce: 100 });
   });
   
   // Initialize the indicator state
@@ -228,6 +284,17 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
   page.appendChild(topbar);
   page.appendChild(autoFoldIndicator);
   page.appendChild(content);
+  
+  // Add rotation hint for mobile
+  const rotateHint = document.createElement('div');
+  rotateHint.className = 'rotate-hint';
+  rotateHint.innerHTML = `
+    <div>📱 ↻</div>
+    <div>For the best experience,</div>
+    <div>please rotate to landscape</div>
+  `;
+  page.appendChild(rotateHint);
+  
   container.appendChild(page);
 
   // Action buttons will be integrated into the human player's seat
@@ -251,46 +318,55 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
   let devMode = false;
   let soundEnabled = true;
 
-  // Game over modal event listeners
-  (gameOverOverlay.querySelector('#game-over-reset') as HTMLButtonElement).onclick = () => {
-    soundEngine.playClick();
-    gameOverOverlay.classList.remove('show');
-    if (store.resetTournament) {
-      store.resetTournament();
-    }
-  };
-  
-  (gameOverOverlay.querySelector('#game-over-quit') as HTMLButtonElement).onclick = () => {
-    soundEngine.playClick();
-    gameOverOverlay.classList.remove('show');
-    // Return to start screen
-    const container = document.getElementById('app')!;
-    import('./startScreen').then(({ renderStartScreen }) => {
-      renderStartScreen(container, {
-        onCharacterSelected: (characterId: string) => {
-          import('../main').then(({ startGame }) => startGame());
-        }
+  // Game over modal event listeners with pointer events
+  import('../utils/mobile').then(({ addPointerListener }) => {
+    const resetBtn = gameOverOverlay.querySelector('#game-over-reset') as HTMLButtonElement;
+    const quitBtn = gameOverOverlay.querySelector('#game-over-quit') as HTMLButtonElement;
+    
+    addPointerListener(resetBtn, () => {
+      soundEngine.playClick();
+      gameOverOverlay.classList.remove('show');
+      if (store.resetTournament) {
+        store.resetTournament();
+      }
+    }, { debounce: 200 });
+    
+    addPointerListener(quitBtn, () => {
+      soundEngine.playClick();
+      gameOverOverlay.classList.remove('show');
+      // Return to start screen
+      const container = document.getElementById('app')!;
+      import('./startScreen').then(({ renderStartScreen }) => {
+        renderStartScreen(container, {
+          onCharacterSelected: (characterId: string) => {
+            import('../main').then(({ startGame }) => startGame());
+          }
+        });
       });
-    });
-  };
+    }, { debounce: 200 });
+  });
   
-  // Top bar controls
-  (topBtns.querySelector('#t-restart') as HTMLButtonElement).onclick = () => {
-    soundEngine.playClick();
-    if (store.newHand) {
-      store.newHand();
-      if (store.startGame) store.startGame();
-    }
-  };
-  // Dev mode button removed for cleaner UI
-  (topBtns.querySelector('#t-sound') as HTMLButtonElement).onclick = () => {
-    soundEnabled = !soundEnabled;
-    soundEngine.setEnabled(soundEnabled);
-    const btn = topBtns.querySelector('#t-sound') as HTMLButtonElement;
-    btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
-    btn.className = soundEnabled ? '' : 'danger';
-    if (soundEnabled) soundEngine.playClick();
-  };
+  // Top bar controls with pointer events
+  import('../utils/mobile').then(({ addPointerListener }) => {
+    const restartBtn = topBtns.querySelector('#t-restart') as HTMLButtonElement;
+    const soundBtn = topBtns.querySelector('#t-sound') as HTMLButtonElement;
+    
+    addPointerListener(restartBtn, () => {
+      soundEngine.playClick();
+      if (store.newHand) {
+        store.newHand();
+        if (store.startGame) store.startGame();
+      }
+    }, { debounce: 200 });
+    
+    addPointerListener(soundBtn, () => {
+      soundEnabled = !soundEnabled;
+      soundEngine.setEnabled(soundEnabled);
+      soundBtn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Muted';
+      soundBtn.className = soundEnabled ? '' : 'danger';
+      if (soundEnabled) soundEngine.playClick();
+    }, { debounce: 100 });
+  });
 
   // Action button event handlers will be created dynamically in the seat rendering
   
@@ -610,45 +686,48 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
         const allInBtn = seat.querySelector('#action-allin');
         const amountInput = seat.querySelector('#action-amount') as HTMLInputElement;
 
-        if (foldBtn) foldBtn.addEventListener('click', () => store.dispatchAction?.('Fold'));
-        if (checkBtn) checkBtn.addEventListener('click', () => store.dispatchAction?.('Check'));
-        if (callBtn) callBtn.addEventListener('click', () => store.dispatchAction?.('Call'));
-        if (betBtn) betBtn.addEventListener('click', () => {
-          const amount = amountInput ? parseInt(amountInput.value) : 10;
-          store.dispatchAction?.('Bet', amount);
-        });
-        if (raiseBtn) raiseBtn.addEventListener('click', () => {
-          const amount = amountInput ? parseInt(amountInput.value) : 10;
-          store.dispatchAction?.('Raise', amount);
-        });
-        if (allInBtn) allInBtn.addEventListener('click', () => {
-          const humanPlayer = Object.values(s.players).find(p => p.seatIndex === 0);
-          if (humanPlayer && humanPlayer.chips > 0) {
-            const legal = computeLegalActions(s, 0);
-            const facingAmount = computeFacingAmount(s, humanPlayer?.id || 'P0');
-            
-            console.log(`🎰 All-in clicked: betting ALL ${humanPlayer.chips} chips`);
-            
-            // Simplified all-in logic: always bet/raise ALL chips
-            // The game engine will automatically handle the all-in flag
-            if (facingAmount > 0 && legal.has('Raise')) {
-              // For raise: amount is the raise over current bet, not total chips
-              // All-in raise = (total chips - amount needed to call)
-              const raiseAmount = Math.max(0, humanPlayer.chips - facingAmount);
-              console.log(`🎰 All-in Raise by $${raiseAmount} (total: $${humanPlayer.chips}, facing: $${facingAmount})`);
-              store.dispatchAction?.('Raise', raiseAmount);
-            } else if (facingAmount > 0 && legal.has('Call')) {
-              // Call automatically handles all-in correctly
-              console.log(`🎰 All-in Call (engine will use correct amount from $${humanPlayer.chips} chips)`);
-              store.dispatchAction?.('Call');
-            } else if (legal.has('Bet')) {
-              // If no one has bet yet, bet ALL chips
-              console.log(`🎰 All-in Bet ALL $${humanPlayer.chips} chips`);
-              store.dispatchAction?.('Bet', humanPlayer.chips);
-            } else {
-              console.log(`🎰 All-in: No valid betting action! Legal actions: [${Array.from(legal).join(',')}]`);
+        // Use mobile-optimized pointer events for action buttons
+        import('../utils/mobile').then(({ addPointerListener }) => {
+          if (foldBtn) addPointerListener(foldBtn as HTMLElement, () => store.dispatchAction?.('Fold'), { debounce: 50 });
+          if (checkBtn) addPointerListener(checkBtn as HTMLElement, () => store.dispatchAction?.('Check'), { debounce: 50 });
+          if (callBtn) addPointerListener(callBtn as HTMLElement, () => store.dispatchAction?.('Call'), { debounce: 50 });
+          if (betBtn) addPointerListener(betBtn as HTMLElement, () => {
+            const amount = amountInput ? parseInt(amountInput.value) : 10;
+            store.dispatchAction?.('Bet', amount);
+          }, { debounce: 50 });
+          if (raiseBtn) addPointerListener(raiseBtn as HTMLElement, () => {
+            const amount = amountInput ? parseInt(amountInput.value) : 10;
+            store.dispatchAction?.('Raise', amount);
+          }, { debounce: 50 });
+          if (allInBtn) addPointerListener(allInBtn as HTMLElement, () => {
+            const humanPlayer = Object.values(s.players).find(p => p.seatIndex === 0);
+            if (humanPlayer && humanPlayer.chips > 0) {
+              const legal = computeLegalActions(s, 0);
+              const facingAmount = computeFacingAmount(s, humanPlayer?.id || 'P0');
+              
+              console.log(`🎰 All-in clicked: betting ALL ${humanPlayer.chips} chips`);
+              
+              // Simplified all-in logic: always bet/raise ALL chips
+              // The game engine will automatically handle the all-in flag
+              if (facingAmount > 0 && legal.has('Raise')) {
+                // For raise: amount is the raise over current bet, not total chips
+                // All-in raise = (total chips - amount needed to call)
+                const raiseAmount = Math.max(0, humanPlayer.chips - facingAmount);
+                console.log(`🎰 All-in Raise by $${raiseAmount} (total: $${humanPlayer.chips}, facing: $${facingAmount})`);
+                store.dispatchAction?.('Raise', raiseAmount);
+              } else if (facingAmount > 0 && legal.has('Call')) {
+                // Call automatically handles all-in correctly
+                console.log(`🎰 All-in Call (engine will use correct amount from $${humanPlayer.chips} chips)`);
+                store.dispatchAction?.('Call');
+              } else if (legal.has('Bet')) {
+                // If no one has bet yet, bet ALL chips
+                console.log(`🎰 All-in Bet ALL $${humanPlayer.chips} chips`);
+                store.dispatchAction?.('Bet', humanPlayer.chips);
+              } else {
+                console.log(`🎰 All-in: No valid betting action! Legal actions: [${Array.from(legal).join(',')}]`);
+              }
             }
-          }
+          }, { debounce: 100 });
         });
       }
     }
@@ -734,9 +813,11 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
     // Add event listener for Next Hand button if it exists
     const nextHandBtn = log.querySelector('#next-hand-btn') as HTMLButtonElement;
     if (nextHandBtn) {
-      nextHandBtn.addEventListener('click', () => {
-        console.log('🎯 Manual next hand clicked');
-        store.newHand?.();
+      import('../utils/mobile').then(({ addPointerListener }) => {
+        addPointerListener(nextHandBtn, () => {
+          console.log('🎯 Manual next hand clicked');
+          store.newHand?.();
+        }, { debounce: 200 });
       });
     }
     
@@ -749,22 +830,24 @@ export function renderApp(container: HTMLElement, store: StoreLike) {
     if (s.round && s.round.currentTurnSeatIndex > 0 && 
         s.phase !== 'Showdown' && s.phase !== 'GameOver' && s.phase !== 'Idle') {
       console.log('🎯 UI detected bot turn, ensuring maybeRunBots is called');
-      setTimeout(() => {
-        if (store.getState && store.setState) {
-          const currentState = store.getState();
-          if (currentState.round && currentState.round.currentTurnSeatIndex > 0 && 
-              currentState.phase !== 'Showdown' && currentState.phase !== 'GameOver' && currentState.phase !== 'Idle') {
-            console.log('🎯 UI forcing maybeRunBots for stuck bot');
-            // Since we can't directly call maybeRunBots from here, we'll trigger it via a dummy action
-            const botSeat = currentState.round.currentTurnSeatIndex;
-            const bot = Object.values(currentState.players).find(p => p.seatIndex === botSeat);
-            if (bot && !bot.isFolded && !bot.isAllIn && bot.chips > 0) {
-              console.log(`🎯 UI detected ${bot.name} needs to act, calling dispatchAction as failsafe`);
-              // This is a UI-level failsafe - we'll just log it for now
+      import('../utils/mobile').then(({ scheduleAnimation }) => {
+        scheduleAnimation(() => {
+          if (store.getState && store.setState) {
+            const currentState = store.getState();
+            if (currentState.round && currentState.round.currentTurnSeatIndex > 0 && 
+                currentState.phase !== 'Showdown' && currentState.phase !== 'GameOver' && currentState.phase !== 'Idle') {
+              console.log('🎯 UI forcing maybeRunBots for stuck bot');
+              // Since we can't directly call maybeRunBots from here, we'll trigger it via a dummy action
+              const botSeat = currentState.round.currentTurnSeatIndex;
+              const bot = Object.values(currentState.players).find(p => p.seatIndex === botSeat);
+              if (bot && !bot.isFolded && !bot.isAllIn && bot.chips > 0) {
+                console.log(`🎯 UI detected ${bot.name} needs to act, calling dispatchAction as failsafe`);
+                // This is a UI-level failsafe - we'll just log it for now
+              }
             }
           }
-        }
-      }, 2000); // 2 second delay to detect stuck bots
+        }, 2000); // 2 second delay to detect stuck bots, but using RAF
+      });
     }
 
     // Update probability display if enabled

@@ -9,13 +9,57 @@
   
   /* UI scaling for overlap prevention */
   --ui-scale: 1; /* Will be dynamically adjusted by ResizeObserver */
+  
+  /* Safe area insets for iOS notch/home indicator support */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  
+  /* Minimum touch target size for iOS */
+  --min-touch-target: 44px;
 }
 
 * { box-sizing: border-box; }
-html, body, #app { 
-  height: 100%; 
-  overflow-x: hidden; 
-  max-width: 100vw;
+/* Support for new viewport units with fallbacks */
+@supports (height: 100svh) {
+  html, body, #app { 
+    height: 100svh; 
+    min-height: 100svh;
+    overflow-x: hidden; 
+    max-width: 100vw;
+  }
+  .page {
+    height: 100svh;
+    min-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  html, body, #app { 
+    height: 100dvh; 
+    min-height: 100dvh;
+    overflow-x: hidden; 
+    max-width: 100vw;
+  }
+  .page {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+/* Fallback for older browsers */
+@supports not (height: 100svh) and not (height: 100dvh) {
+  html, body, #app { 
+    height: 100vh; 
+    min-height: 100vh;
+    overflow-x: hidden; 
+    max-width: 100vw;
+  }
+  .page {
+    height: 100vh;
+    min-height: 100vh;
+  }
 }
 body {
   margin: 0;
@@ -34,9 +78,9 @@ body {
 .page {
   display: grid;
   grid-template-rows: auto 1fr;
-  height: 100%;
   overflow-x: hidden;
   max-width: 100vw;
+  /* Height is set above in @supports blocks */
 }
 
 .topbar {
@@ -54,6 +98,10 @@ body {
   box-shadow: 
     0 2px 10px rgba(0,0,0,0.5),
     inset 0 1px 0 rgba(255,255,255,0.2);
+  /* Safe area support for iOS notch */
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
 }
 
 .topbar-inner {
@@ -495,6 +543,12 @@ button {
   box-shadow: 
     0 2px 6px rgba(0,0,0,0.3),
     inset 0 1px 0 rgba(255,255,255,0.1);
+  /* iOS touch target requirements */
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  touch-action: manipulation; /* Eliminate 300ms delay */
+  /* Ensure interactive text is 16px+ to prevent zoom */
+  font-size: max(16px, 1rem);
 }
 button:hover:not([disabled]) { 
   background: 
@@ -3275,6 +3329,246 @@ button.all-in:hover::before {
   
   .bet-row {
     flex: 1;
+  }
+}
+
+/* ===== PERFORMANCE OPTIMIZATIONS ===== */
+
+/* GPU acceleration for key animated elements */
+.player-actions,
+.modal-overlay,
+.rotate-hint,
+.wanted-poster,
+.western-btn,
+.auto-fold-indicator {
+  will-change: transform, opacity;
+  transform: translateZ(0); /* Force hardware acceleration */
+}
+
+/* Optimize card rendering */
+.card,
+.card-back {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  transform: translateZ(0);
+}
+
+/* Optimize table and seat areas */
+.table-area,
+.seat {
+  contain: layout style paint;
+  will-change: auto; /* Only enable when needed */
+}
+
+/* Smooth transitions with hardware acceleration */
+.western-btn {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.western-btn:hover {
+  transform: translateY(-2px) translateZ(0);
+}
+
+/* Optimize SVG rendering */
+svg {
+  shape-rendering: optimizeSpeed;
+}
+
+.saloon-doors-svg {
+  will-change: transform;
+}
+
+/* Reduce paint complexity for backgrounds */
+.page {
+  contain: layout;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  /* Disable will-change for reduced motion */
+  * {
+    will-change: auto !important;
+  }
+}
+
+/* ===== MOBILE RESPONSIVE STYLES ===== */
+
+/* Mobile-first responsive design for iOS Safari */
+@media (max-width: 768px) {
+  /* Stack layout for narrow screens */
+  .content {
+    display: flex !important;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.5rem;
+    padding-bottom: calc(var(--safe-bottom) + 1rem);
+  }
+  
+  /* Table area takes priority on mobile */
+  .table-area {
+    order: 1;
+    margin: 0;
+  }
+  
+  /* Right panel stacks below table */
+  .right-panel-container {
+    order: 2;
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* Make topbar more compact on mobile */
+  .topbar-inner {
+    padding: 0.3rem 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  
+  .status {
+    font-size: 0.9rem;
+  }
+  
+  /* Ensure buttons stack properly */
+  .btns {
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  
+  /* Player action bar - pin to bottom for one-hand use */
+  .player-actions {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: rgba(42, 27, 18, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 0.5rem;
+    padding-bottom: calc(var(--safe-bottom) + 0.5rem);
+    border-top: 2px solid var(--accent);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  }
+  
+  /* Large primary buttons for easy thumb access */
+  .player-actions button {
+    min-height: 48px;
+    font-size: 18px;
+    flex: 1;
+    max-width: none;
+  }
+  
+  /* Compact raise slider for mobile */
+  .raise-controls {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .raise-amount-input {
+    width: 100% !important;
+  }
+  
+  /* Auto-fold indicator adjustments */
+  .auto-fold-indicator {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* Portrait phone specific adjustments */
+@media (max-width: 480px) and (orientation: portrait) {
+  /* Even more compact layout with GPU acceleration */
+  .table-area {
+    transform: scale(0.85) translateZ(0);
+    transform-origin: center top;
+    will-change: transform;
+  }
+  
+  /* Stack character selection more aggressively */
+  .character-posters {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  
+  /* Menu buttons should stack on very narrow screens */
+  .menu-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 300px;
+    margin: 0 auto;
+  }
+  
+  .western-btn {
+    min-height: var(--min-touch-target);
+  }
+}
+
+/* Landscape phone optimizations */
+@media (max-width: 768px) and (orientation: landscape) {
+  /* Prefer side-by-side layout in landscape */
+  .content {
+    flex-direction: row !important;
+  }
+  
+  .table-area {
+    flex: 2;
+  }
+  
+  .right-panel-container {
+    flex: 1;
+    max-width: 250px;
+  }
+  
+  /* More compact vertical spacing */
+  .topbar-inner {
+    padding: 0.2rem 0.5rem;
+  }
+  
+  /* Action bar can be smaller in landscape */
+  .player-actions {
+    position: relative !important;
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+    padding: 0.3rem;
+  }
+}
+
+/* Prevent zoom on form inputs */
+input, select, textarea {
+  font-size: max(16px, 1rem) !important;
+}
+
+/* Orientation change hint for very narrow portrait */
+@media (max-width: 480px) and (orientation: portrait) {
+  .rotate-hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+    z-index: 1000;
+    display: none; /* Will be shown via JS when needed */
+  }
+  
+  .rotate-hint.show {
+    display: block;
   }
 }
 

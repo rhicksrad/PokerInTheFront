@@ -597,68 +597,82 @@ function getViewContent(): string {
 }
 
 function setupStartScreenEventListeners(container: HTMLElement, callbacks: StartScreenCallbacks): void {
-  // Saloon doors click to start game
+  // Saloon doors click to start game with pointer events
   const saloonDoors = container.querySelector('#saloon-doors');
   if (saloonDoors && currentView === 'main') {
-    saloonDoors.addEventListener('click', () => {
-      // Use default character if none selected, or go to character selection
-      const selectedCharacter = localStorage.getItem('poker-selected-character');
-      if (selectedCharacter) {
-        // Start game with selected character
-        callbacks.onCharacterSelected(selectedCharacter);
-      } else {
-        // Go to character selection first
-        currentView = 'character-select';
-        container.innerHTML = getStartScreenHTML();
-        setupStartScreenEventListeners(container, callbacks);
-      }
+    import('../utils/mobile').then(({ addPointerListener, preventAccidentalGestures }) => {
+      // Prevent gestures on the doors
+      preventAccidentalGestures(saloonDoors as HTMLElement);
+      
+      addPointerListener(saloonDoors as HTMLElement, () => {
+        // Use default character if none selected, or go to character selection
+        const selectedCharacter = localStorage.getItem('poker-selected-character');
+        if (selectedCharacter) {
+          // Start game with selected character
+          callbacks.onCharacterSelected(selectedCharacter);
+        } else {
+          // Go to character selection first
+          currentView = 'character-select';
+          container.innerHTML = getStartScreenHTML();
+          setupStartScreenEventListeners(container, callbacks);
+        }
+      }, { debounce: 200 });
     });
   }
   
-  // Menu button navigation
+  // Menu button navigation with pointer events
   const menuButtons = container.querySelectorAll('.menu-btn');
-  menuButtons.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const action = (e.currentTarget as HTMLElement).dataset.action as StartScreenView;
-      if (action) {
-        currentView = action;
-        container.innerHTML = getStartScreenHTML();
-        setupStartScreenEventListeners(container, callbacks);
-      }
+  import('../utils/mobile').then(({ addPointerListener }) => {
+    menuButtons.forEach(btn => {
+      addPointerListener(btn as HTMLElement, () => {
+        const action = (btn as HTMLElement).dataset.action as StartScreenView;
+        if (action) {
+          currentView = action;
+          container.innerHTML = getStartScreenHTML();
+          setupStartScreenEventListeners(container, callbacks);
+        }
+      }, { debounce: 150 });
     });
   });
   
-  // Back button
+  // Back button with pointer events
   const backBtn = container.querySelector('.back-btn');
   if (backBtn) {
-    backBtn.addEventListener('click', () => {
-      currentView = 'main';
-      container.innerHTML = getStartScreenHTML();
-      setupStartScreenEventListeners(container, callbacks);
+    import('../utils/mobile').then(({ addPointerListener }) => {
+      addPointerListener(backBtn as HTMLElement, () => {
+        currentView = 'main';
+        container.innerHTML = getStartScreenHTML();
+        setupStartScreenEventListeners(container, callbacks);
+      }, { debounce: 150 });
     });
   }
   
-  // Character selection
+  // Character selection with pointer events
   if (currentView === 'character-select') {
     const characterCards = container.querySelectorAll('.wanted-poster');
-    characterCards.forEach(card => {
-      card.addEventListener('click', () => {
-        const characterId = (card as HTMLElement).dataset.characterId;
-        if (characterId) {
-          characterCards.forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
-          
-          setTimeout(() => {
-            callbacks.onCharacterSelected(characterId);
-          }, 300);
-        }
-      });
-      
-      card.addEventListener('mouseenter', () => {
-        card.classList.add('hover');
-      });
-      card.addEventListener('mouseleave', () => {
-        card.classList.remove('hover');
+    import('../utils/mobile').then(({ addPointerListener }) => {
+      characterCards.forEach(card => {
+        addPointerListener(card as HTMLElement, () => {
+          const characterId = (card as HTMLElement).dataset.characterId;
+          if (characterId) {
+            characterCards.forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            
+            import('../utils/mobile').then(({ scheduleAnimation }) => {
+              scheduleAnimation(() => {
+                callbacks.onCharacterSelected(characterId);
+              }, 300);
+            });
+          }
+        }, { debounce: 200 });
+        
+        // Keep hover effects for desktop
+        card.addEventListener('mouseenter', () => {
+          card.classList.add('hover');
+        });
+        card.addEventListener('mouseleave', () => {
+          card.classList.remove('hover');
+        });
       });
     });
   }
