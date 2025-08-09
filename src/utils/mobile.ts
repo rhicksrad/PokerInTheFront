@@ -122,6 +122,11 @@ export const preventAccidentalGestures = (element: HTMLElement): void => {
   // Prevent double-tap zoom
   element.style.touchAction = 'manipulation';
   
+  // Prevent iOS rubber band bounce effect
+  element.style.overscrollBehavior = 'none';
+  element.style.overscrollBehaviorY = 'none';
+  element.style.overscrollBehaviorX = 'none';
+  
   // Prevent context menu on long press
   element.addEventListener('contextmenu', (e) => {
     if (isIOS()) {
