@@ -152,11 +152,28 @@ export function createStore() {
         return;
       }
       
-      // If it's human turn or no one to act, stop
-      if (s.round.currentTurnSeatIndex === 0 || s.round.toActQueue.length === 0) {
-        console.log('🤖 Bot processing stopped - human turn or empty queue:', {
-          currentTurn: s.round.currentTurnSeatIndex,
-          queueLength: s.round.toActQueue.length
+      // If no one left to act, attempt to complete the street instead of stopping
+      if (s.round.toActQueue.length === 0) {
+        console.log('🤖 Empty queue detected - attempting to complete street');
+        const progressed = tryCompleteStreet(s);
+        setState(progressed);
+        // If after progressing it's a bot's turn, schedule processing again
+        if (
+          progressed.round &&
+          progressed.round.currentTurnSeatIndex > 0 &&
+          progressed.phase !== 'Showdown' &&
+          progressed.phase !== 'GameOver' &&
+          progressed.phase !== 'Idle'
+        ) {
+          GameTimers.scheduleBotProcessing(() => maybeRunBots(), 100);
+        }
+        return;
+      }
+
+      // Stop if it's the human's turn
+      if (s.round.currentTurnSeatIndex === 0) {
+        console.log('🤖 Bot processing stopped - human turn', {
+          currentTurn: s.round.currentTurnSeatIndex
         });
         return;
       }
